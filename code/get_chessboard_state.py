@@ -27,6 +27,19 @@ def is_cell_empty(cell_image, threshold):
 
 
 def get_player_side(cell):
+    transform = transforms.Compose([
+        transforms.Resize((20, 20)),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+
+    height, width, _ = cell.shape
+    rect_size = 28
+    bottom_left = transform( cell[height-rect_size:height, 0:rect_size] / 255 )
+    bottom_right = transform( cell[height-rect_size:height, width-rect_size:width] / 255 )
+
+
+
+
     pass
     # TODO use model to detect the side by the bottom cell
 
