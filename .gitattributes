@@ -1,1 +1,2 @@
 model_figures.h5 filter=lfs diff=lfs merge=lfs -text
+notebooks/stockfish/stockfish.exe filter=lfs diff=lfs merge=lfs -text
