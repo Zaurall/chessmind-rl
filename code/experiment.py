@@ -16,6 +16,7 @@ from model import RLAgent
 
 changed_color = False
 pyautogui.FAILSAFE = False
+player_side = None
 
 
 class SimpleCNN(nn.Module):
@@ -229,10 +230,10 @@ def find_move(fen_before, fen_after, player_side):
 
 
 def detect_move(cells, player_side):
-    if player_side == chess.WHITE:
-        print('white')
-    if player_side == chess.BLACK:
-        print('black')
+    # if player_side == chess.WHITE:
+    #     print('white')
+    # if player_side == chess.BLACK:
+    #     print('black')
     global board, changed_color
 
     easy_fen_before = board.fen()
@@ -245,8 +246,8 @@ def detect_move(cells, player_side):
 
     if move_from is not None and move_to is not None:
         move = chess.Move.from_uci(move_from + move_to)
-        for legal_move in board.legal_moves:
-            print(legal_move)
+        # for legal_move in board.legal_moves:
+        #     print(legal_move)
         if move in board.legal_moves:
             changed_color = True
             board.push(move)
@@ -256,7 +257,7 @@ def detect_move(cells, player_side):
 
 
 def detect_split(screenshot):
-    global board, changed_color
+    global board, changed_color, player_side
 
     screenshot = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
     screenshot_gray = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
@@ -345,22 +346,18 @@ x, y, w, h = 0, 0, 0, 0
 def take_screenshots():
     global is_screenshotting, move_in_progress, board, x, y, w, h
 
-    while is_screenshotting:  # Continuous loop while screenshotting is active
-        if move_in_progress:
-            print("Move in progress, stopping screenshots...")
-            return  # Stop taking screenshots during move
+    while True:  # Continuous loop while screenshotting is active
+        if is_screenshotting:
+            screenshot = pyautogui.screenshot()  # Take a screenshot
+            x, y, w, h = detect_split(screenshot)  # Process screenshot for board updates
 
-        screenshot = pyautogui.screenshot()  # Take a screenshot
-        x, y, w, h = detect_split(screenshot)  # Process screenshot for board updates
-
-        if board.is_game_over():
-            print("Game over, stopping screenshots...")
-            is_screenshotting = False  # Stop taking screenshots if the game is over
-            break
-        else:
-            if board.turn == chess.WHITE:
-                begin_move()
-                time.sleep(2)
+            if board.is_game_over():
+                print("Game over, stopping screenshots...")
+                is_screenshotting = False  # Stop taking screenshots if the game is over
+                break
+            else:
+                if board.turn == player_side:
+                    begin_move()
         time.sleep(0.6)
 
 def make_move():
@@ -372,23 +369,25 @@ def make_move():
     columns = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
     rows = ['1', '2', '3', '4', '5', '6', '7', '8'][::-1]
 
-    print(columns.index(action[0]) * w // 8 + w // 16, rows.index(action[1]) * h // 8 + h // 16)
+    # print(columns.index(action[0]) * w // 8 + w // 16, rows.index(action[1]) * h // 8 + h // 16)
     pyautogui.click(x + columns.index(action[0]) * w // 8 + w // 16, y + rows.index(action[1]) * h // 8 + h // 16)
     time.sleep(0.2)
     pyautogui.click(x + columns.index(action[2]) * w // 8 + w // 16, y + rows.index(action[3]) * h // 8 + h // 16)
+    time.sleep(1)
 
 import tkinter as tk
 import threading
-
+screenshot_thread = threading.Thread(target=take_screenshots)
 
 def start_screenshotting():
     global is_screenshotting
     if not is_screenshotting:
         is_screenshotting = True
         print("Screenshotting started...")
-        #screenshot_thread = threading.Thread(target=take_screenshots)
-        #screenshot_thread.start()
-        take_screenshots()
+        if not screenshot_thread.is_alive():
+            screenshot_thread.start()
+    else:
+        is_screenshotting = True
 
 
 def stop_screenshotting():
@@ -407,23 +406,12 @@ def begin_move():
     start_screenshotting()
 
 
-def end_move():
-    global move_in_progress
-    print("End Move button clicked")
-    move_in_progress = False
-    start_screenshotting()  # Resume screenshots after the move is done
-
-
-
 def end_game():
     global is_screenshotting, board
     board = None
     print("End Game button clicked")
     stop_screenshotting()  # Stop screenshots if the game is manually ended
 
-
-def start_game():
-    start_screenshotting()
 
 def append_to_text_widget(message):
     # Insert new text at the end and scroll to the bottom
@@ -445,9 +433,6 @@ def create_control_window():
 
     begin_move_button = tk.Button(root, text="Begin Move", command=begin_move)
     begin_move_button.pack(pady=10)
-
-    end_move_button = tk.Button(root, text="End Move", command=end_move)
-    end_move_button.pack(pady=10)
 
     end_game_button = tk.Button(root, text="End Game", command=end_game)
     end_game_button.pack(pady=10)
