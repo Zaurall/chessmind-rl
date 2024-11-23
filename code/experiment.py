@@ -15,6 +15,7 @@ from torchvision import transforms
 from model import RLAgent
 
 changed_color = False
+pyautogui.FAILSAFE = False
 
 
 class SimpleCNN(nn.Module):
@@ -212,16 +213,16 @@ def find_move(fen_before, fen_after, player_side):
     for row in range(len(rows)):
         for col in range(len(columns)):
             if board_before[row][col] != board_after[row][col]:
-                if board_before[row][col] == "-":
-                    if player_side == chess.BLACK:
-                        move_to = f"{columns[7-col]}{rows[row]}"
-                    else:
-                        move_to = f"{columns[col]}{rows[7 - row]}"
-                elif board_after[row][col] == "-":
+                if board_after[row][col] == "-":
                     if player_side == chess.BLACK:
                         move_from = f"{columns[7-col]}{rows[row]}"
                     else:
                         move_from = f"{columns[col]}{rows[7 - row]}"
+                else:
+                    if player_side == chess.BLACK:
+                        move_to = f"{columns[7-col]}{rows[row]}"
+                    else:
+                        move_to = f"{columns[col]}{rows[7 - row]}"
                         
 
     return move_from, move_to
@@ -234,8 +235,8 @@ def detect_move(cells, player_side):
         print('black')
     global board, changed_color
 
-    easy_fen_before = get_easy_fen_from_chessboard(board)
-    easy_fen_after = get_easy_fen(cells)
+    easy_fen_before = board.fen()
+    easy_fen_after = set_chessboard(cells, player_side)
 
 
     move_from, move_to = find_move(easy_fen_before, easy_fen_after, player_side)
@@ -246,7 +247,6 @@ def detect_move(cells, player_side):
         move = chess.Move.from_uci(move_from + move_to)
         for legal_move in board.legal_moves:
             print(legal_move)
-        print(move in board.legal_moves)
         if move in board.legal_moves:
             changed_color = True
             board.push(move)
@@ -334,13 +334,16 @@ def detect_split(screenshot):
     else:
         detect_move(cells, player_side)
 
+    return x,y,w,h
+
 board = None
 
 is_screenshotting = False  # Start as False (not taking screenshots)
 move_in_progress = False
+x, y, w, h = 0, 0, 0, 0
 
 def take_screenshots():
-    global is_screenshotting, move_in_progress, board
+    global is_screenshotting, move_in_progress, board, x, y, w, h
 
     while is_screenshotting:  # Continuous loop while screenshotting is active
         if move_in_progress:
@@ -348,19 +351,31 @@ def take_screenshots():
             return  # Stop taking screenshots during move
 
         screenshot = pyautogui.screenshot()  # Take a screenshot
-        detect_split(screenshot)  # Process screenshot for board updates
+        x, y, w, h = detect_split(screenshot)  # Process screenshot for board updates
 
         if board.is_game_over():
             print("Game over, stopping screenshots...")
             is_screenshotting = False  # Stop taking screenshots if the game is over
             break
+        else:
+            if board.turn == chess.WHITE:
+                begin_move()
+                time.sleep(2)
         time.sleep(0.6)
 
 def make_move():
     fen = board.fen()
     action = game_model.choose_action(fen)
-    print(board.uci(action))
-    append_to_text_widget(board.uci(action)+"\n")
+    action = board.uci(action)
+    append_to_text_widget(action+"\n")
+
+    columns = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+    rows = ['1', '2', '3', '4', '5', '6', '7', '8'][::-1]
+
+    print(columns.index(action[0]) * w // 8 + w // 16, rows.index(action[1]) * h // 8 + h // 16)
+    pyautogui.click(x + columns.index(action[0]) * w // 8 + w // 16, y + rows.index(action[1]) * h // 8 + h // 16)
+    time.sleep(0.2)
+    pyautogui.click(x + columns.index(action[2]) * w // 8 + w // 16, y + rows.index(action[3]) * h // 8 + h // 16)
 
 import tkinter as tk
 import threading
@@ -371,8 +386,9 @@ def start_screenshotting():
     if not is_screenshotting:
         is_screenshotting = True
         print("Screenshotting started...")
-        screenshot_thread = threading.Thread(target=take_screenshots)
-        screenshot_thread.start()
+        #screenshot_thread = threading.Thread(target=take_screenshots)
+        #screenshot_thread.start()
+        take_screenshots()
 
 
 def stop_screenshotting():
