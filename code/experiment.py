@@ -11,8 +11,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow.keras.models import load_model
 from torchvision import transforms
-
-from model import RLAgent
+from model import RLAgent, AlphaZeroNetwork
 
 changed_color = False
 pyautogui.FAILSAFE = False
@@ -20,7 +19,13 @@ player_side = None
 
 
 class SimpleCNN(nn.Module):
+    """
+    A CNN model to detect leters.
+    """
     def __init__(self):
+        """
+        Initialization of models layers.
+        """
         super(SimpleCNN, self).__init__()
         self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
@@ -32,6 +37,19 @@ class SimpleCNN(nn.Module):
         self.fc3 = nn.Linear(64, 3)
 
     def forward(self, x):
+        """
+        Model's forward function.
+        
+        Parameters
+        ----------
+        `x`: torch.tensor
+            Tensor of features.
+        
+        Returns
+        ----------
+        `x`: torch.tensor
+            Processed tensor of features.
+        """
         x = self.pool(nn.functional.relu(self.conv1(x)))
         x = self.pool(nn.functional.relu(self.conv2(x)))
         x = nn.functional.relu(self.conv3(x))
@@ -41,24 +59,58 @@ class SimpleCNN(nn.Module):
         x = self.fc3(x)
         return x
 
+# Loading a letter detection model from a checkpoint
 letter_detection_model = SimpleCNN()
 letter_detection_model_path = os.path.join(os.getcwd(), 'models', 'cv_letter_side_detection', 'letter_detection_model.pt')
 letter_detection_model.load_state_dict(torch.load(letter_detection_model_path, weights_only=True))
 letter_detection_model.eval()
+
+# Loading a piece detection model from a checkpoint
 piece_detection_model_path = os.path.join(os.getcwd(), 'models', 'cv_pieces_classification', 'model_figures.h5')
 piece_detection_model = load_model(piece_detection_model_path)
 
+# Loading an agent from a checkpoint
 game_model = RLAgent()
-game_model_path = os.path.join(os.getcwd(), 'models', 'chess_models', 'q_learning_reward_for_pieces.pkl')
+game_model_path = os.path.join(os.getcwd(), 'models', 'chess_models', 'AlphaZeroNet_20x256.pt')
 game_model.load_agent(game_model_path)
 
 
 def are_pixels_similar(pixel1, pixel2, threshold=10):
+    """
+    Check whether two pixels' values differ within a sertain range.
+    
+    Parameters
+    ----------
+    `pixel1`: numpy.ndarray
+        Value of a pixel 1.
+    `pixel2`: numpy.ndarray
+        Value of a pixel 2.
+    'threshold': int=10
+        Maximum difference between pixels to consider them similar.
+    
+    Returns
+    ----------
+    `result`: Bool
+        True if pixels are similar and vice versa.
+    """
     distance = np.linalg.norm(pixel1 - pixel2)
     return distance < threshold
 
 
 def remove_lines(chess_board):
+    """
+    Crop an image to remove borders.
+    
+    Parameters
+    ----------
+    `chess_board`: numpy.ndarray
+        Image of a chessboard.
+    
+    Returns
+    ----------
+    `chess_board`: numpy.ndarray
+        Cropped version of a chessboard.
+    """
     while not are_pixels_similar(chess_board[10][0], chess_board[10][1]):  # left
         chess_board = chess_board[:, 1:]
     while not are_pixels_similar(chess_board[0][10], chess_board[1][10]):  # top
@@ -71,6 +123,21 @@ def remove_lines(chess_board):
 
 
 def is_cell_empty(cell_image, threshold):
+    """
+    Check whether there is a figure in the cell.
+    
+    Parameters
+    ----------
+    `cell_image`: numpy.ndarray
+        Image of a cell.
+    `threshold`: int
+        Amount of 'different' pixels.
+    
+    Returns
+    ----------
+    `result`: Bool
+        Signals whether the cell is empty or not.
+    """
     gray_cell = cv2.cvtColor(cell_image, cv2.COLOR_BGR2GRAY)
     _, thresh = cv2.threshold(gray_cell, threshold, 255, cv2.ADAPTIVE_THRESH_MEAN_C)
     black_pixels = np.sum(thresh == 0)
@@ -78,6 +145,19 @@ def is_cell_empty(cell_image, threshold):
 
 
 def get_player_side(cell):
+    """
+    Check whether the player is playing for black or white figures.
+    
+    Parameters
+    ----------
+    `cell`: numpy.ndarray
+        Image of a certain cell (4th cell in the lowest row).
+    
+    Returns
+    ----------
+    `result`: int
+        Signals whether the player is playing for black or white figures.
+    """
     transform = transforms.Compose([
         transforms.ToPILImage(),
         transforms.Resize((20, 20)),
@@ -103,35 +183,20 @@ def get_player_side(cell):
         return chess.BLACK
 
 
-def get_easy_fen(cells):
-    easy_fen = ""
-    string = ""
-    empty_cells = 0
-    for i, cell in enumerate(cells, 1):
-        if cell["is_empty"]:
-            empty_cells += 1
-        else:
-            if empty_cells > 0:
-                string += f"{empty_cells}"
-            string += "o"
-            empty_cells = 0
-
-        if i % 8 == 0:
-            if empty_cells > 0:
-                string += f"{empty_cells}"
-            easy_fen += f"{string}/" if i < 64 else f"{string}"
-            string = ""
-            empty_cells = 0
-    return easy_fen
-
-
-def get_easy_fen_from_chessboard(chessboard):
-    fen = chessboard.fen().split()[0]
-    new_fen = ''.join('o' if char.isalpha() else char for char in fen)
-    return new_fen
-
-
 def predict_chess_piece(cell):
+    """
+    Detect a figure from an image.
+    
+    Parameters
+    ----------
+    `cell`: numpy.ndarray
+        Image of a cell.
+    
+    Returns
+    ----------
+    `figure`: str
+        Detected figure label.
+    """
     figure_to_label = {
         0: 'b',
         1: 'k',
@@ -156,6 +221,21 @@ def predict_chess_piece(cell):
 
 
 def set_chessboard(cells, player_side):
+    """
+    Get a FEN from image of a chessboard.
+    
+    Parameters
+    ----------
+    `cells`: list(dict)
+        List of dicts in form {'image': numpy.ndarray, 'label': str, 'is_empty': bool}.
+    `player_side`: int
+        0 or 1 - players' color.
+    
+    Returns
+    ----------
+    `fen`: str
+        The board setup.
+    """
     initial_fens = ['rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR', 'PPPPPPPP/RNBQKBNR/8/8/8/8/rnbqkbnr/pppppppp']
 
     fen = ""
@@ -189,6 +269,19 @@ def set_chessboard(cells, player_side):
 
 
 def create_easy_board(fen):
+    """
+    Turn FEN into array of symbols.
+    
+    Parameters
+    ----------
+    `fen`: str
+        The board setup.
+    
+    Returns
+    ----------
+    `rows`: list
+        The board setup (visualised).
+    """
     rows = []
     for row in fen.split("/"):
         new_row = []
@@ -202,11 +295,30 @@ def create_easy_board(fen):
 
 
 def find_move(fen_before, fen_after, player_side):
+    """
+    Analyze the difference between two chess board states to find last move.
+    
+    Parameters
+    ----------
+    `fen_before`: str
+        1st board setup.
+    `fen_after`: str
+        2nd board setup.
+    `player_side`: int
+        0 or 1 - players' color.
+    
+    Returns
+    ----------
+    `move_from`: str
+        Index of some cell.
+    `move_to`: str
+        Index of some cell.
+    """
     board_before = create_easy_board(fen_before)
     board_after = create_easy_board(fen_after)
 
-    move_from = None
-    move_to = None
+    move_from = []
+    move_to = []
 
     columns = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
     rows = ['1', '2', '3', '4', '5', '6', '7', '8']
@@ -216,20 +328,38 @@ def find_move(fen_before, fen_after, player_side):
             if board_before[row][col] != board_after[row][col]:
                 if board_after[row][col] == "-":
                     if player_side == chess.BLACK:
-                        move_from = f"{columns[7-col]}{rows[row]}"
+                        move_from.append(f"{columns[7-col]}{rows[row]}")
                     else:
-                        move_from = f"{columns[col]}{rows[7 - row]}"
+                        move_from.append(f"{columns[col]}{rows[7 - row]}")
                 else:
                     if player_side == chess.BLACK:
-                        move_to = f"{columns[7-col]}{rows[row]}"
+                        move_to.append(f"{columns[7-col]}{rows[row]}")
                     else:
-                        move_to = f"{columns[col]}{rows[7 - row]}"
-                        
-
-    return move_from, move_to
+                        move_to.append(f"{columns[col]}{rows[7 - row]}")
+    
+    if len(move_from) == 1:
+        return move_from[0], move_to[0]
+    elif "c1" in move_to:
+        return "e1", "c1"
+    elif "c8" in move_to:
+        return "e8", "c8"
+    elif "g1" in move_to:
+        return "e1", "g1"
+    elif "g8" in move_to:
+        return "e8", "g8"
 
 
 def detect_move(cells, player_side):
+    """
+    Perform detected move to the board if it is possible.
+    
+    Parameters
+    ----------
+    `cells`: list(dict)
+        List of dicts in form {'image': numpy.ndarray, 'label': str, 'is_empty': bool}.
+    `player_side`: int
+        0 or 1 - players' color.
+    """
     # if player_side == chess.WHITE:
     #     print('white')
     # if player_side == chess.BLACK:
@@ -257,6 +387,19 @@ def detect_move(cells, player_side):
 
 
 def detect_split(screenshot):
+    """
+    Detect a chessboard on the screenshot and split it into cells.
+    
+    Parameters
+    ----------
+    `screenshot`: numpy.ndarray
+        Screenshot image.
+    
+    Returns
+    ----------
+    `x, y, w, h`: int
+        Measures of the board.
+    """
     global board, changed_color, player_side
 
     screenshot = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
@@ -344,6 +487,9 @@ move_in_progress = False
 x, y, w, h = 0, 0, 0, 0
 
 def take_screenshots():
+    """
+    Continuously take screenshots and detect board.
+    """
     global is_screenshotting, move_in_progress, board, x, y, w, h
 
     while True:  # Continuous loop while screenshotting is active
@@ -361,6 +507,9 @@ def take_screenshots():
         time.sleep(0.6)
 
 def make_move():
+    """
+    Chose an action using a model and perform it.
+    """
     fen = board.fen()
     action = game_model.choose_action(fen)
     action = board.uci(action)
@@ -380,6 +529,9 @@ import threading
 screenshot_thread = threading.Thread(target=take_screenshots)
 
 def start_screenshotting():
+    """
+    Start a thread to take screenshots.
+    """
     global is_screenshotting
     if not is_screenshotting:
         is_screenshotting = True
@@ -391,12 +543,18 @@ def start_screenshotting():
 
 
 def stop_screenshotting():
+    """
+    Stop making screenshots unless `start_screenshotting` is triggered.
+    """
     global is_screenshotting
     is_screenshotting = False
     print("Screenshotting stopped...")
 
 
 def begin_move():
+    """
+    Stop making screenshots for the period of making a move.
+    """
     global move_in_progress
     print("Begin Move button clicked")
     move_in_progress = True
@@ -407,6 +565,9 @@ def begin_move():
 
 
 def end_game():
+    """
+    Stop making screenshots.
+    """
     global is_screenshotting, board
     board = None
     print("End Game button clicked")
@@ -414,12 +575,18 @@ def end_game():
 
 
 def append_to_text_widget(message):
+    """
+    Functional output to the widget.
+    """
     # Insert new text at the end and scroll to the bottom
     text_display.insert(tk.END, message)
     text_display.see(tk.END)
 
 # Create a small GUI with buttons using tkinter
 def create_control_window():
+    """
+    Create a control window and make it work in a loop.
+    """
     global text_display
     root = tk.Tk()
     root.title("Chess Move Control")
