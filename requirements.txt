@@ -1,0 +1,14 @@
+matplotlib
+numpy
+opencv-python
+torch
+torchvision
+tensorflow
+scikit-learn
+pandas
+stockfish
+tqdm
+joblib
+chess
+pyautogui
+IPython
